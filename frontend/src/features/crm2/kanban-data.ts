@@ -1,53 +1,48 @@
-// Вымышленные данные макета канбан-доски /crm2. Ни одно поле не связано с
-// настоящей CRM: имена, компании, суммы и время выдуманы для примера вида.
-// Реальные данные подключаются только по отдельному согласованию владельца.
+// Демо-данные канбан-доски /crm2.
+//
+// Данные вымышленные (CRM2 пока работает без сервера), но СТРУКТУРА повторяет
+// поля настоящего API (`/crm/leads`, `/crm/stages`): числовые id, ИНН с
+// контрольной суммой, контакты логиста, приоритет 0–3, теги с цветом HEX,
+// продавец по ссылке на сотрудника. Так подключение реальных данных в
+// отдельном шаге станет заменой источника, а не переписыванием разметки.
+//
+// Поля `source` и `time` — макетные: на сервере у лида их нет. Оставлены
+// потому, что владелец согласовал их вид на карточке (цветная метка
+// источника и «сколько назад»); при подключении API они упадут сами собой.
 
-export type StageId = "new" | "callback" | "lp" | "potential" | "left" | "waiting";
+export type StageId = number;
 
-export interface Stage {
-  id: StageId;
-  name: string;
-  /** Яркий основной цвет этапа: точка, заголовок, сумма, полоска карточки. */
+/** Тройка цветов этапа: насыщенный, заливка колонки в светлой, в тёмной. */
+export interface StageColor {
   dot: string;
-  /** Мягкая заливка колонки в светлой теме. */
   tint: string;
-  /** Заставка колонки в тёмной теме — тот же цвет полупрозрачностью. */
   dark: string;
 }
 
+// Палитра CRM2: шесть красочных цветов, которые выбрал владелец.
+export const STAGE_PALETTE: StageColor[] = [
+  { dot: "#7c5cff", tint: "#ede9ff", dark: "rgba(124,92,255,0.13)" },
+  { dot: "#f59e0b", tint: "#fff2dc", dark: "rgba(245,158,11,0.13)" },
+  { dot: "#0ea5e9", tint: "#e0f3fe", dark: "rgba(14,165,233,0.13)" },
+  { dot: "#14b8a6", tint: "#dcf7f3", dark: "rgba(20,184,166,0.13)" },
+  { dot: "#f43f5e", tint: "#ffe4e8", dark: "rgba(244,63,94,0.13)" },
+  { dot: "#84cc16", tint: "#edfbd6", dark: "rgba(132,204,22,0.13)" },
+];
+
+export interface BoardStage {
+  id: StageId;
+  name: string;
+  color: StageColor;
+}
+
 // Порядок и названия колонок — ровно как задал владелец.
-// Палитра — красочная: у каждого этапа свой яркий цвет.
-export const STAGES: Stage[] = [
-  { id: "new", name: "Новый", dot: "#7c5cff", tint: "#ede9ff", dark: "rgba(124,92,255,0.13)" },
-  {
-    id: "callback",
-    name: "Перезвонить",
-    dot: "#f59e0b",
-    tint: "#fff2dc",
-    dark: "rgba(245,158,11,0.13)",
-  },
-  {
-    id: "lp",
-    name: "Вышел на ЛПР",
-    dot: "#0ea5e9",
-    tint: "#e0f3fe",
-    dark: "rgba(14,165,233,0.13)",
-  },
-  {
-    id: "potential",
-    name: "Потенциальный",
-    dot: "#14b8a6",
-    tint: "#dcf7f3",
-    dark: "rgba(20,184,166,0.13)",
-  },
-  { id: "left", name: "Уехали", dot: "#f43f5e", tint: "#ffe4e8", dark: "rgba(244,63,94,0.13)" },
-  {
-    id: "waiting",
-    name: "Ждем заявку",
-    dot: "#84cc16",
-    tint: "#edfbd6",
-    dark: "rgba(132,204,22,0.13)",
-  },
+export const STAGES: BoardStage[] = [
+  { id: 1, name: "Новый", color: STAGE_PALETTE[0] },
+  { id: 2, name: "Перезвонить", color: STAGE_PALETTE[1] },
+  { id: 3, name: "Вышел на ЛПР", color: STAGE_PALETTE[2] },
+  { id: 4, name: "Потенциальный", color: STAGE_PALETTE[3] },
+  { id: 5, name: "Уехали", color: STAGE_PALETTE[4] },
+  { id: 6, name: "Ждем заявку", color: STAGE_PALETTE[5] },
 ];
 
 /** У источника тоже свой цвет — метка на карточке окрашивается по нему. */
@@ -63,159 +58,295 @@ export const SOURCE_STYLES: Record<string, SourceStyle> = {
   Мессенджер: { color: "#db2777", tint: "#fdeaf3" },
 };
 
-export interface BoardLead {
-  id: string;
+/** Теги как в общем справочнике CRM: название и свободный HEX-цвет. */
+export interface MockTag {
+  id: number;
   name: string;
-  company: string;
-  amount: string;
+  color: string;
+}
+
+export const MOCK_TAGS: MockTag[] = [
+  { id: 1, name: "ФУРА", color: "#0ea5e9" },
+  { id: 2, name: "Негабарит", color: "#f43f5e" },
+  { id: 3, name: "Регулярный груз", color: "#84cc16" },
+  { id: 4, name: "Тендер", color: "#7c5cff" },
+  { id: 5, name: "Реф", color: "#14b8a6" },
+  { id: 6, name: "Постоянник", color: "#f59e0b" },
+];
+
+/** Сотрудники-продавцы макета; «Анна Ким» — тот же человек, что в панели. */
+export interface Seller {
+  id: number;
+  name: string;
+  initials: string;
+  color: string;
+}
+
+export const SELLERS: Seller[] = [
+  { id: 1, name: "Анна Ким", initials: "АК", color: "#d946ef" },
+  { id: 2, name: "Сергей Полянский", initials: "СП", color: "#0ea5e9" },
+  { id: 3, name: "Мария Лебедева", initials: "МЛ", color: "#14b8a6" },
+  { id: 4, name: "Игорь Сафонов", initials: "ИС", color: "#f59e0b" },
+];
+
+export interface BoardLead {
+  id: number;
+  name: string;
+  inn: string;
+  logist_contact: string;
+  logist_phone: string;
+  /** Приоритет 0–3, как в основной CRM (звёзды на карточке). */
+  priority: number;
+  stage_id: StageId;
+  assigned_to_id: number;
+  tags: MockTag[];
+  /** Проигранные макеты прячутся с доски (как is_archived в сервере). */
+  lost: boolean;
   source: string;
   time: string;
-  stage: StageId;
+  /** МАКЕТ-ПОЛЯ «следующий контакт»: на сервере их нет (действия удалены
+   *  из основной CRM 29.09.2026). Нужны странице «Задачи»; при подключении
+   *  настоящих данных судьбу страницы решает владелец отдельно. */
+  next_contact_text?: string;
+  next_contact_at?: string;
+  /** Дата создания (макет, в формате ISO как поля created_at сервера) —
+   *  нужна странице «Аналитика» для динамики поступления. */
+  created_at?: string;
 }
+
+const tag = (id: number): MockTag => MOCK_TAGS.find((t) => t.id === id)!;
 
 export const INITIAL_LEADS: BoardLead[] = [
   {
-    id: "lead-1",
-    name: "Анна Смирнова",
-    company: "Севертрейд",
-    amount: "480 000 ₽",
+    id: 1,
+    name: "Севертрейд",
+    inn: "7701000001",
+    logist_contact: "Анна Смирнова",
+    logist_phone: "+7 915 204-18-73",
+    priority: 2,
+    stage_id: 1,
+    assigned_to_id: 1,
+    tags: [tag(3)],
+    lost: false,
     source: "Сайт",
     time: "20 мин назад",
-    stage: "new",
   },
   {
-    id: "lead-2",
-    name: "Игорь Мальцев",
-    company: "Волга-Строй",
-    amount: "1 250 000 ₽",
+    id: 2,
+    name: "Волга-Строй",
+    inn: "5402000031",
+    logist_contact: "Игорь Мальцев",
+    logist_phone: "+7 903 771-22-09",
+    priority: 3,
+    stage_id: 1,
+    assigned_to_id: 2,
+    tags: [tag(2), tag(6)],
+    lost: false,
     source: "Звонок",
     time: "1 ч назад",
-    stage: "new",
   },
   {
-    id: "lead-3",
-    name: "Мария Орлова",
-    company: "Клиника Здоровье",
-    amount: "320 000 ₽",
+    id: 3,
+    name: "Клиника Здоровье",
+    inn: "6617000065",
+    logist_contact: "Мария Орлова",
+    logist_phone: "+7 926 440-71-15",
+    priority: 1,
+    stage_id: 1,
+    assigned_to_id: 3,
+    tags: [tag(5)],
+    lost: false,
     source: "Рекомендация",
     time: "2 ч назад",
-    stage: "new",
   },
   {
-    id: "lead-4",
-    name: "Дмитрий Савельев",
-    company: "Аквилон",
-    amount: "760 000 ₽",
+    id: 4,
+    name: "Аквилон",
+    inn: "7840000094",
+    logist_contact: "Дмитрий Савельев",
+    logist_phone: "+7 921 118-54-30",
+    priority: 1,
+    stage_id: 2,
+    assigned_to_id: 4,
+    tags: [],
+    lost: false,
     source: "Звонок",
     time: "3 ч назад",
-    stage: "callback",
   },
   {
-    id: "lead-5",
-    name: "Ольга Титова",
-    company: "Ясная Поляна",
-    amount: "190 000 ₽",
+    id: 5,
+    name: "Ясная Поляна",
+    inn: "1655000028",
+    logist_contact: "Ольга Титова",
+    logist_phone: "+7 950 332-80-44",
+    priority: 0,
+    stage_id: 2,
+    assigned_to_id: 2,
+    tags: [tag(3)],
+    lost: false,
     source: "Мессенджер",
     time: "5 ч назад",
-    stage: "callback",
   },
   {
-    id: "lead-6",
-    name: "Павел Гринёв",
-    company: "ТехноПарк",
-    amount: "2 100 000 ₽",
+    id: 6,
+    name: "ТехноПарк",
+    inn: "5260000058",
+    logist_contact: "Павел Гринёв",
+    logist_phone: "+7 912 605-13-87",
+    priority: 2,
+    stage_id: 2,
+    assigned_to_id: 1,
+    tags: [tag(4)],
+    lost: false,
     source: "Сайт",
     time: "вчера",
-    stage: "callback",
   },
   {
-    id: "lead-7",
-    name: "Сергей Кузнецов",
-    company: "Меридиан Логистика",
-    amount: "3 400 000 ₽",
+    id: 7,
+    name: "Меридиан Логистика",
+    inn: "6164000089",
+    logist_contact: "Сергей Кузнецов",
+    logist_phone: "+7 985 712-66-01",
+    priority: 3,
+    stage_id: 3,
+    assigned_to_id: 4,
+    tags: [tag(1), tag(6)],
+    lost: false,
     source: "Звонок",
     time: "40 мин назад",
-    stage: "lp",
   },
   {
-    id: "lead-8",
-    name: "Елена Волкова",
-    company: "Фарватер Трейд",
-    amount: "980 000 ₽",
+    id: 8,
+    name: "Фарватер Трейд",
+    inn: "5907000019",
+    logist_contact: "Елена Волкова",
+    logist_phone: "+7 917 330-95-62",
+    priority: 2,
+    stage_id: 3,
+    assigned_to_id: 3,
+    tags: [],
+    lost: false,
     source: "Рекомендация",
     time: "4 ч назад",
-    stage: "lp",
   },
   {
-    id: "lead-9",
-    name: "Артём Белов",
-    company: "Гранит-Авто",
-    amount: "1 540 000 ₽",
+    id: 9,
+    name: "Гранит-Авто",
+    inn: "0278000042",
+    logist_contact: "Артём Белов",
+    logist_phone: "+7 911 240-77-18",
+    priority: 1,
+    stage_id: 3,
+    assigned_to_id: 2,
+    tags: [tag(2)],
+    lost: false,
     source: "Сайт",
     time: "вчера",
-    stage: "lp",
   },
   {
-    id: "lead-10",
-    name: "Наталья Гордеева",
-    company: "Ритм-Сервис",
-    amount: "650 000 ₽",
+    id: 10,
+    name: "Ритм-Сервис",
+    inn: "4631000070",
+    logist_contact: "Наталья Гордеева",
+    logist_phone: "+7 922 811-09-54",
+    priority: 2,
+    stage_id: 4,
+    assigned_to_id: 1,
+    tags: [tag(4)],
+    lost: false,
     source: "Мессенджер",
     time: "6 ч назад",
-    stage: "potential",
   },
   {
-    id: "lead-11",
-    name: "Виктор Лапин",
-    company: "Центр-Профи",
-    amount: "870 000 ₽",
+    id: 11,
+    name: "Центр-Профи",
+    inn: "7016000009",
+    logist_contact: "Виктор Лапин",
+    logist_phone: "+7 918 503-14-26",
+    priority: 1,
+    stage_id: 4,
+    assigned_to_id: 4,
+    tags: [tag(3)],
+    lost: false,
     source: "Звонок",
     time: "вчера",
-    stage: "potential",
   },
   {
-    id: "lead-12",
-    name: "Ксения Дорошова",
-    company: "Балтик Фиш",
-    amount: "410 000 ₽",
+    id: 12,
+    name: "Балтик Фиш",
+    inn: "2312000031",
+    logist_contact: "Ксения Дорошова",
+    logist_phone: "+7 906 124-39-77",
+    priority: 1,
+    stage_id: 4,
+    assigned_to_id: 3,
+    tags: [tag(5)],
+    lost: false,
     source: "Сайт",
     time: "2 дн назад",
-    stage: "potential",
   },
   {
-    id: "lead-13",
-    name: "Роман Ефремов",
-    company: "СтальИнвест",
-    amount: "1 800 000 ₽",
+    id: 13,
+    name: "СтальИнвест",
+    inn: "5018000064",
+    logist_contact: "Роман Ефремов",
+    logist_phone: "+7 961 448-02-31",
+    priority: 2,
+    stage_id: 5,
+    assigned_to_id: 2,
+    tags: [tag(6)],
+    lost: false,
     source: "Звонок",
     time: "вчера",
-    stage: "left",
   },
   {
-    id: "lead-14",
-    name: "Юлия Панова",
-    company: "Дом Тканей",
-    amount: "260 000 ₽",
+    id: 14,
+    name: "Дом Тканей",
+    inn: "3327000090",
+    logist_contact: "Юлия Панова",
+    logist_phone: "+7 983 220-64-85",
+    priority: 0,
+    stage_id: 5,
+    assigned_to_id: 4,
+    tags: [],
+    lost: false,
     source: "Сайт",
     time: "2 дн назад",
-    stage: "left",
   },
   {
-    id: "lead-15",
-    name: "Алексей Тарасов",
-    company: "Горный Ключ",
-    amount: "2 750 000 ₽",
+    id: 15,
+    name: "Горный Ключ",
+    inn: "3613000020",
+    logist_contact: "Алексей Тарасов",
+    logist_phone: "+7 927 667-41-02",
+    priority: 3,
+    stage_id: 6,
+    assigned_to_id: 1,
+    tags: [tag(1)],
+    lost: false,
     source: "Рекомендация",
     time: "3 ч назад",
-    stage: "waiting",
   },
   {
-    id: "lead-16",
-    name: "Ирина Соколова",
-    company: "Медиалайн",
-    amount: "540 000 ₽",
+    id: 16,
+    name: "Медиалайн",
+    inn: "7451000052",
+    logist_contact: "Ирина Соколова",
+    logist_phone: "+7 977 015-83-49",
+    priority: 1,
+    stage_id: 6,
+    assigned_to_id: 3,
+    tags: [tag(3)],
+    lost: false,
     source: "Мессенджер",
     time: "5 ч назад",
-    stage: "waiting",
   },
 ];
+
+/** Следующий id и цвет для новой колонки: цвета идут по кругу палитры. */
+export function nextStage(stages: BoardStage[]): { id: number; color: StageColor } {
+  return {
+    id: Math.max(0, ...stages.map((stage) => stage.id)) + 1,
+    color: STAGE_PALETTE[stages.length % STAGE_PALETTE.length],
+  };
+}

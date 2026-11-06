@@ -1,67 +1,140 @@
-import { useState, type DragEvent } from "react";
-import { Moon, Sun } from "lucide-react";
+import { useCallback, useState, type DragEvent } from "react";
+import { Flame, Globe, LayoutGrid, Plus, TrendingUp } from "lucide-react";
 
-import { INITIAL_LEADS, SOURCE_STYLES, STAGES, type BoardLead, type StageId } from "./kanban-data";
+import {
+  addStage as addStageToStore,
+  deleteLead,
+  deleteStage as deleteStageFromStore,
+  loseLead,
+  moveLead,
+  moveStage,
+  recolorStage,
+  renameStage,
+  setLeadPriority,
+  useCrm2Board,
+} from "./crm2-store";
+import { useCrm2Theme } from "./crm2-theme";
+import type { StageId } from "./kanban-data";
+import { LEAD_MIME } from "./LeadBoardCard";
+import { STAGE_MIME, LeadBoardColumn } from "./LeadBoardColumn";
+import { ThemeToggle } from "./ThemeToggle";
 
-// Красочная канбан-доска /crm2: у каждого этапа свой яркий цвет —
-// заливка колонки, заголовок, сумма и полоска на карточке; у источников
-// свои цветные метки. Светлая тема — по умолчанию, тёмная — по
-// переключателю (выбор запоминается в браузере). Левая панель не
-// затрагивается. Перетаскивание — только в памяти страницы; сервер и
-// данные не затрагиваются.
-type Theme = "light" | "dark";
-
-const THEME_KEY = "crm2.theme";
-
-function loadTheme(): Theme {
-  try {
-    return window.localStorage.getItem(THEME_KEY) === "dark" ? "dark" : "light";
-  } catch {
-    return "light";
-  }
-}
-
-function saveTheme(theme: Theme): void {
-  try {
-    window.localStorage.setItem(THEME_KEY, theme);
-  } catch {
-    // Хранилище недоступно — просто работаем без запоминания.
-  }
-}
-
+/**
+ * Красочная канбан-доска /crm2 (шаг 2 переноса демо-версии владельца).
+ *
+ * Этапы — те шесть, что задал владелец, в его палитре; состав карточки
+ * повторяет реальные поля лида основной CRM (название, ИНН, контакт и
+ * телефон логиста, теги, звёзды приоритета 0–3, продавец) плюс согласованные
+ * макет-поля «источник» и «сколько назад». Форма данных — как в ответах API,
+ * чтобы подключение сервера стало заменой источника.
+ *
+ * Механика (всё в памяти страницы, сервер не трогается): перетаскивание
+ * карточек между колонками и точная вставка перед картой, перестановка
+ * колонок за их заголовок, меню карточки (перенос/проигрыш/удаление),
+ * управление этапами в заголовке колонки (переименование по двойному клику,
+ * цвет, удаление с переносом карточек в первый оставшийся этап), добавление
+ * этапа в конец. Над доской — строка показателей, живая от текущего макета.
+ * Тема общая на весь /crm2 (crm2-theme.ts), тумблер — в шапке (решение
+ * владельца от 31.10.2026). Левая панель не затрагивается.
+ */
 export function LeadBoard() {
-  const [theme, setTheme] = useState<Theme>(loadTheme);
-  const [leads, setLeads] = useState<BoardLead[]>(INITIAL_LEADS);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const theme = useCrm2Theme();
+  // Карточки и этапы — общее макетное состояние CRM2 (crm2-store.ts): оно
+  // делится со страницей лида и переживает переходы по меню.
+  const { leads, stages } = useCrm2Board();
+  const [draggingLeadId, setDraggingLeadId] = useState<number | null>(null);
   const [overStage, setOverStage] = useState<StageId | null>(null);
+  const [editingStageId, setEditingStageId] = useState<number | null>(null);
 
   const light = theme === "light";
 
-  function applyTheme(next: Theme): void {
-    setTheme(next);
-    saveTheme(next);
-  }
+  const consumeEditRequest = useCallback(() => setEditingStageId(null), []);
 
-  function handleDragStart(event: DragEvent<HTMLElement>, id: string): void {
-    event.dataTransfer.setData("text/plain", id);
+  // --- Карточки ----------------------------------------------------------
+
+  function handleLeadDragStart(event: DragEvent<HTMLElement>, leadId: number): void {
+    event.dataTransfer.setData(LEAD_MIME, String(leadId));
+    event.dataTransfer.setData("text/plain", String(leadId));
     event.dataTransfer.effectAllowed = "move";
-    setDraggingId(id);
+    setDraggingLeadId(leadId);
   }
 
-  function handleDragEnd(): void {
-    setDraggingId(null);
+  function handleLeadDragEnd(): void {
+    setDraggingLeadId(null);
     setOverStage(null);
   }
 
-  function handleDrop(event: DragEvent<HTMLElement>, stage: StageId): void {
-    event.preventDefault();
-    const id = event.dataTransfer.getData("text/plain") || draggingId;
-    if (id) {
-      setLeads((prev) => prev.map((lead) => (lead.id === id ? { ...lead, stage } : lead)));
+  function handleColumnDrop(event: DragEvent<HTMLElement>, stageId: StageId): void {
+    const stagePayload = event.dataTransfer.getData(STAGE_MIME);
+    if (stagePayload) {
+      moveStage(Number(stagePayload), stageId);
+      setOverStage(null);
+      return;
     }
-    setDraggingId(null);
+    const leadPayload = event.dataTransfer.getData(LEAD_MIME);
+    if (leadPayload) moveLead(Number(leadPayload), stageId, null);
     setOverStage(null);
   }
+
+  function handleDropBeforeCard(event: DragEvent<HTMLElement>, beforeLeadId: number): void {
+    const leadPayload = event.dataTransfer.getData(LEAD_MIME);
+    if (!leadPayload) return;
+    const target = leads.find((lead) => lead.id === beforeLeadId);
+    if (target) moveLead(Number(leadPayload), target.stage_id, beforeLeadId);
+    setOverStage(null);
+  }
+
+  function loseMockLead(leadId: number): void {
+    // Быстрый проигрыш с доски идёт с причиной по умолчанию; выбор причины
+    // живёт на странице лида (шаг 3), где она обязательна.
+    loseLead(leadId, "Цена не устроила");
+  }
+
+  // --- Этапы -------------------------------------------------------------
+
+  function addStage(): void {
+    // Новая колонка сразу ждёт своё название в режиме правки.
+    setEditingStageId(addStageToStore());
+  }
+
+  function handleStageDragStart(event: DragEvent<HTMLElement>, stageId: number): void {
+    event.dataTransfer.setData(STAGE_MIME, String(stageId));
+    event.dataTransfer.effectAllowed = "move";
+  }
+
+  // --- Показатели над доской ---------------------------------------------
+
+  const activeLeads = leads.filter((lead) => !lead.lost);
+  const kpis = [
+    {
+      label: "Всего лидов",
+      value: activeLeads.length,
+      icon: LayoutGrid,
+      color: "#7c5cff",
+      bg: light ? "#ede9ff" : "rgba(124,92,255,0.16)",
+    },
+    {
+      label: "Горячие",
+      value: activeLeads.filter((lead) => lead.priority === 3).length,
+      icon: Flame,
+      color: "#f43f5e",
+      bg: light ? "#ffe4e8" : "rgba(244,63,94,0.16)",
+    },
+    {
+      label: "Потенциальные",
+      value: activeLeads.filter((lead) => lead.stage_id === 4).length,
+      icon: TrendingUp,
+      color: "#14b8a6",
+      bg: light ? "#dcf7f3" : "rgba(20,184,166,0.16)",
+    },
+    {
+      label: "С сайта",
+      value: activeLeads.filter((lead) => lead.source === "Сайт").length,
+      icon: Globe,
+      color: "#0ea5e9",
+      bg: light ? "#e0f3fe" : "rgba(14,165,233,0.16)",
+    },
+  ];
 
   return (
     <div
@@ -81,166 +154,93 @@ export function LeadBoard() {
             По состоянию на сегодня · данные вымышленные
           </p>
         </div>
-        <div
-          role="group"
-          aria-label="Тема оформления"
-          className={`flex items-center gap-1 rounded-xl border p-1 ${
-            light ? "border-[#e5e7eb] bg-white shadow-sm" : "border-white/[0.08] bg-white/[0.06]"
-          }`}
-        >
-          <button
-            type="button"
-            aria-pressed={light}
-            onClick={() => applyTheme("light")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#7c5cff] focus-visible:outline-none ${
-              light ? "bg-[#7c5cff] text-white" : "text-white/50 hover:text-white/80"
-            }`}
-          >
-            <Sun aria-hidden="true" size={14} strokeWidth={2.2} />
-            Светлая
-          </button>
-          <button
-            type="button"
-            aria-pressed={!light}
-            onClick={() => applyTheme("dark")}
-            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] font-semibold transition-colors focus-visible:ring-2 focus-visible:ring-[#7c5cff] focus-visible:outline-none ${
-              light ? "text-[#6b7280] hover:text-[#111827]" : "bg-white/10 text-white"
-            }`}
-          >
-            <Moon aria-hidden="true" size={14} strokeWidth={2.2} />
-            Тёмная
-          </button>
-        </div>
+        <ThemeToggle />
       </header>
 
-      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-5">
-        {STAGES.map((stage) => {
-          const items = leads.filter((lead) => lead.stage === stage.id);
-          const isOver = overStage === stage.id;
-          return (
-            <section
-              key={stage.id}
-              aria-label={`Колонка ${stage.name}`}
-              className={`flex w-[280px] shrink-0 flex-col rounded-2xl transition-all ${
-                light ? "shadow-sm" : ""
-              }`}
-              style={{
-                backgroundColor: light ? stage.tint : stage.dark,
-                boxShadow: isOver ? `inset 0 0 0 2px ${stage.dot}` : undefined,
-              }}
+      <div
+        aria-label="Показатели доски"
+        className="grid grid-cols-2 gap-3 px-5 pb-4 lg:grid-cols-4"
+      >
+        {kpis.map(({ label, value, icon: Icon, color, bg }) => (
+          <div
+            key={label}
+            className={`flex items-center gap-3 rounded-2xl border px-3.5 py-3 ${
+              light
+                ? "border-[#eceef2] bg-white/80 shadow-sm"
+                : "border-white/[0.07] bg-white/[0.04]"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className="grid h-9 w-9 shrink-0 place-items-center rounded-xl"
+              style={{ backgroundColor: bg, color }}
             >
-              <header className="flex items-center gap-2 px-3.5 pt-3 pb-2">
-                <span
-                  aria-hidden="true"
-                  className="h-2.5 w-2.5 shrink-0 rounded-full"
-                  style={{ backgroundColor: stage.dot }}
-                />
-                <h2
-                  className={`text-[13px] font-bold ${light ? "" : "text-white/85"}`}
-                  style={light ? { color: stage.dot } : undefined}
-                >
-                  {stage.name}
-                </h2>
-                <span
-                  className={`ml-auto rounded-full px-2 py-0.5 text-[11px] font-bold ${
-                    light ? "bg-white shadow-sm" : "bg-white/[0.09]"
-                  }`}
-                  style={{ color: stage.dot }}
-                >
-                  {items.length}
-                </span>
-              </header>
-              <div
-                role="list"
-                className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-2.5 pb-2.5"
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                  setOverStage(stage.id);
-                }}
-                onDragLeave={() => {
-                  setOverStage((prev) => (prev === stage.id ? null : prev));
-                }}
-                onDrop={(event) => handleDrop(event, stage.id)}
+              <Icon size={17} strokeWidth={2} />
+            </span>
+            <div className="leading-tight">
+              <p
+                className={`text-[10.5px] font-bold tracking-wider uppercase ${
+                  light ? "text-[#6b7280]" : "text-white/40"
+                }`}
               >
-                {items.length === 0 && (
-                  <p
-                    className="rounded-xl border border-dashed px-1 py-4 text-center text-[11px] font-medium"
-                    style={{ borderColor: `${stage.dot}66`, color: stage.dot }}
-                  >
-                    {isOver ? "Перетащите сюда" : "Пусто"}
-                  </p>
-                )}
-                {items.map((lead) => {
-                  const source = SOURCE_STYLES[lead.source];
-                  const sourceStyle = source
-                    ? light
-                      ? { backgroundColor: source.tint, color: source.color }
-                      : { backgroundColor: `${source.color}26`, color: source.color }
-                    : light
-                      ? { backgroundColor: "#f3f4f6", color: "#6b7280" }
-                      : {
-                          backgroundColor: "rgba(255,255,255,0.08)",
-                          color: "rgba(255,255,255,0.5)",
-                        };
-                  return (
-                    <article
-                      key={lead.id}
-                      role="listitem"
-                      draggable
-                      onDragStart={(event) => handleDragStart(event, lead.id)}
-                      onDragEnd={handleDragEnd}
-                      className={`cursor-grab rounded-xl border p-3 transition-all active:cursor-grabbing ${
-                        light
-                          ? "border-[#eceef2] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)] hover:shadow-[0_6px_16px_rgba(15,23,42,0.10)]"
-                          : "border-white/[0.07] bg-white/[0.06] hover:bg-white/[0.09]"
-                      } ${draggingId === lead.id ? "opacity-40" : ""}`}
-                      style={{ borderLeft: `4px solid ${stage.dot}` }}
-                    >
-                      <div className="flex items-start justify-between gap-2 pl-1">
-                        <p
-                          className={`text-[13px] font-semibold ${
-                            light ? "text-[#111827]" : "text-white/90"
-                          }`}
-                        >
-                          {lead.name}
-                        </p>
-                        <p
-                          className="shrink-0 text-[12px] font-extrabold"
-                          style={{ color: stage.dot }}
-                        >
-                          {lead.amount}
-                        </p>
-                      </div>
-                      <p
-                        className={`mt-1 pl-1 text-[11.5px] font-medium ${
-                          light ? "text-[#6b7280]" : "text-white/45"
-                        }`}
-                      >
-                        {lead.company}
-                      </p>
-                      <div className="mt-2.5 flex items-center gap-2 pl-1">
-                        <span
-                          className="rounded-md px-1.5 py-0.5 text-[10px] font-bold"
-                          style={sourceStyle}
-                        >
-                          {lead.source}
-                        </span>
-                        <span
-                          className={`text-[10px] font-medium ${
-                            light ? "text-[#9ca3af]" : "text-white/35"
-                          }`}
-                        >
-                          {lead.time}
-                        </span>
-                      </div>
-                    </article>
-                  );
-                })}
-              </div>
-            </section>
-          );
-        })}
+                {label}
+              </p>
+              <p
+                className={`text-[17px] font-extrabold tabular-nums ${
+                  light ? "text-[#111827]" : "text-white"
+                }`}
+              >
+                {value}
+              </p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto px-5 pb-5">
+        {stages.map((stage) => (
+          <LeadBoardColumn
+            key={stage.id}
+            stage={stage}
+            stages={stages}
+            leads={leads.filter((lead) => lead.stage_id === stage.id)}
+            light={light}
+            isOver={overStage === stage.id}
+            draggingLeadId={draggingLeadId}
+            startEditingTitle={editingStageId === stage.id}
+            onEditConsumed={consumeEditRequest}
+            onLeadDragStart={handleLeadDragStart}
+            onLeadDragEnd={handleLeadDragEnd}
+            onLeadDrop={handleColumnDrop}
+            onLeadDropBefore={handleDropBeforeCard}
+            onOver={(stageId) => setOverStage(stageId)}
+            onOverEnd={(stageId) =>
+              setOverStage((current) => (current === stageId ? null : current))
+            }
+            onRename={renameStage}
+            onRecolor={recolorStage}
+            onDelete={deleteStageFromStore}
+            onMoveLead={(leadId, stageId) => moveLead(leadId, stageId, null)}
+            onLoseLead={loseMockLead}
+            onDeleteLead={deleteLead}
+            onPriorityLead={setLeadPriority}
+            onStageDragStart={handleStageDragStart}
+            onStageDragEnd={() => setOverStage(null)}
+          />
+        ))}
+
+        <button
+          type="button"
+          onClick={addStage}
+          className={`flex w-[180px] shrink-0 flex-col items-center justify-center gap-2 rounded-2xl border border-dashed transition-colors ${
+            light
+              ? "border-[#c9cdd6] text-[#6b7280] hover:border-[#7c5cff] hover:text-[#7c5cff]"
+              : "border-white/[0.14] text-white/40 hover:border-[#7c5cff]/70 hover:text-[#8b7dff]"
+          }`}
+        >
+          <Plus aria-hidden="true" size={18} strokeWidth={2} />
+          <span className="text-[12px] font-semibold">Новый этап</span>
+        </button>
       </div>
     </div>
   );

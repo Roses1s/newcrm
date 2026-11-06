@@ -5,7 +5,15 @@ import { RequireAuth } from "@/app/RequireAuth";
 import { LoginPage } from "@/features/auth/LoginPage";
 import { KanbanPage } from "@/features/crm/KanbanPage";
 import { LeadFormPage } from "@/features/crm/LeadFormPage";
-import { Crm2Page } from "@/features/crm2/Crm2Page";
+import { Crm2AnalyticsPage } from "@/features/crm2/Crm2AnalyticsPage";
+import { Crm2CustomersPage } from "@/features/crm2/Crm2CustomersPage";
+import { Crm2Shell } from "@/features/crm2/Crm2Shell";
+import { LeadBoard } from "@/features/crm2/LeadBoard";
+import { Crm2SettingsPage } from "@/features/crm2/Crm2SettingsPage";
+import { Crm2TasksPage } from "@/features/crm2/Crm2TasksPage";
+import { LeadPage } from "@/features/crm2/LeadPage";
+import { StubPage } from "@/features/crm2/StubPage";
+import { BriefcaseBusiness, CalendarDays } from "lucide-react";
 
 // Страницы загружаются отдельно: тяжёлые разделы не входят в стартовый
 // пакет.
@@ -76,12 +84,57 @@ const router = createBrowserRouter([
     ),
   },
   {
+    // Новая CRM: общая оболочка (левая панель) и разделы под ней.
+    // Доска — корневая страница; остальные разделы пока заглушки, но
+    // переходы по меню работают и не трогают данные.
     path: "/crm2",
     element: (
       <RequireAuth>
-        <Crm2Page />
+        <Crm2Shell />
       </RequireAuth>
     ),
+    children: [
+      { index: true, element: <LeadBoard /> },
+      { path: "leads/:id", element: <LeadPage /> },
+      {
+        path: "customers",
+        element: <Crm2CustomersPage />,
+      },
+      {
+        path: "tasks",
+        element: <Crm2TasksPage />,
+      },
+      {
+        path: "analytics",
+        element: <Crm2AnalyticsPage />,
+      },
+      {
+        path: "deals",
+        element: (
+          <StubPage
+            title="Сделки"
+            subtitle="Скоро. Временный пункт панели: заявки в новом оформлении — отдельное решение владельца"
+            body="Временная страница каркаса: содержимое не запланировано, только переход"
+            icon={BriefcaseBusiness}
+          />
+        ),
+      },
+      {
+        path: "calendar",
+        element: (
+          <StubPage
+            title="Календарь"
+            subtitle="Скоро. Временный пункт панели, реализация не планировалась"
+            body="Временная страница каркаса: содержимое не запланировано, только переход"
+            icon={CalendarDays}
+          />
+        ),
+      },
+      {
+        path: "settings",
+        element: <Crm2SettingsPage />,
+      },
+    ],
   },
   {
     path: "/crm",
