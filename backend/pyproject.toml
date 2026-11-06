@@ -23,7 +23,7 @@ dependencies = [
     "passlib[bcrypt]>=1.7.4",
     # bcrypt 5.0 несовместим с passlib 1.7.4: при определении бэкенда passlib
     # пробует пароль длиннее 72 байт, а bcrypt 5 на этом падает вместо обрезки.
-    "bcrypt>=4.0,<5",
+    "bcrypt>=4.0,<6",
     "python-multipart>=0.0.20",
     "celery[redis]>=5.5",
     # Клиент Redis (протокол Valkey с Redis совместим).
